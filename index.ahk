@@ -7,4 +7,3 @@
 #Include ./emoji.ahk
 #Include ./markdown.ahk
 #Include ./winSwitch.ahk
-
