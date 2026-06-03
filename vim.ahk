@@ -1,111 +1,104 @@
 ﻿; ---------------
 ; VIM 操作映射脚本
 ; ---------------
-SetCapsLockState, AlwaysOff
+
+#Include "./config.ahk"
+
+SetCapsLockState("AlwaysOff")
+
+SendMotionKey(keyName) {
+    if GetKeyState("Shift")
+        Send("^{" keyName "}")
+    else if !GetKeyState("Alt")
+        Send("{" keyName "}")
+    else
+        Send("+{" keyName "}")
+}
+
+SendCtrlUnlessAlt(keyName) {
+    if !GetKeyState("Alt")
+        Send("^{" keyName "}")
+    else
+        Send("{" keyName "}")
+}
+
+SendDeleteKey() {
+    if !GetKeyState("Alt")
+        Send("{Delete}")
+    else
+        Send("+{Delete}")
+}
+
+; ==================== 热键定义（受模块开关控制） ====================
+#HotIf ModuleStates["vim"]
 
 /*
 * CapsLock + k 上移 ⬆
 */
-CapsLock & k::
-  if getkeystate("shift") = 1
-    Send, ^{Up}
-  else if getkeystate("alt") = 0
-    Send, {Up}
-  else
-    Send, +{Up}
-return
+CapsLock & k:: {
+    SendMotionKey("Up")
+}
 /*
 * CapsLock + j 下移 ⬇
 */
-CapsLock & j::
-  if getkeystate("shift") = 1
-    Send, ^{Down}
-  else if getkeystate("alt") = 0
-    Send, {Down}
-  else
-    Send, +{Down}
-return
+CapsLock & j:: {
+    SendMotionKey("Down")
+}
 
 /*
 * CapsLock + h 左移 ⬅
 */
-CapsLock & h::
-  if getkeystate("shift") = 1
-    Send, ^{Left}
-  else if getkeystate("alt") = 0
-    Send, {Left}
-  else
-    Send, +{Left}
-return
+CapsLock & h:: {
+    SendMotionKey("Left")
+}
 
 /*
 * CapsLock + l 右移 ➡
 */
-CapsLock & l::
-  if getkeystate("shift") = 1
-    Send, ^{Right}
-  else if getkeystate("alt") = 0
-    Send, {Right}
-  else
-    Send, +{Right}
-return
+CapsLock & l:: {
+    SendMotionKey("Right")
+}
 /*
 * CapsLock + a 移动到行首
 */
-CapsLock & a::
-  Send {Home}
-return
+CapsLock & a:: {
+    Send("{Home}")
+}
 
 /*
 * CapsLock + I Home
 */
-CapsLock & i::
-  if getkeystate("shift") = 1
-    Send, ^{Home}
-  else if getkeystate("alt") = 0
-    Send, {Home}
-  else
-    Send, +{Home}
-return
+CapsLock & i:: {
+    SendMotionKey("Home")
+}
 
 /*
 * CapsLock + M End
 */
-CapsLock & m::
-  if getkeystate("shift") = 1
-    Send, ^{End}
-  else if getkeystate("alt") = 0
-    Send, {End}
-  else
-    Send, +{End}
-return
+CapsLock & m:: {
+    SendMotionKey("End")
+}
 
 /*
 * CapsLock + U PageUp
 */
-CapsLock & u::
-  if getkeystate("alt") = 0
-    Send, ^{PgUp}
-  else
-    Send, {PgUp}
-return
+CapsLock & u:: {
+    SendCtrlUnlessAlt("PgUp")
+}
 
 /*
 * CapsLock + N PageEnd
 */
-CapsLock & n::
-  if getkeystate("alt") = 0
-    Send, ^{PgDn}
-  else
-    Send, {PgDn}
-return
+CapsLock & n:: {
+    SendCtrlUnlessAlt("PgDn")
+}
 
 /*
 * CapsLock + Back
+*
+
+#HotIf  ; 结束条件/
+CapsLock & Backspace::{
+  SendDeleteKey()
+}
 */
-CapsLock & Backspace::
-  if getkeystate("alt") = 0
-    Send, {Delete}
-  else
-    Send, +{Delete}
-return

@@ -1,128 +1,119 @@
+#Include "./config.ahk"
+
 FStatus := false
+EscPresses := 0
+
+SendFunctionKey(functionKey) {
+    if !GetKeyState("Alt")
+        Send("{" functionKey "}")
+    else
+        Send("+{" functionKey "}")
+}
+
+SendFunctionOrFallback(functionKey, fallbackKey, useText := false) {
+    global FStatus
+
+    if FStatus {
+        Send("{" functionKey "}")
+        return
+    }
+
+    if useText
+        SendText(fallbackKey)
+    else
+        Send("{" fallbackKey "}")
+}
 
 ; ---------------
 ;  F区 操作映射脚本
 ; ---------------
 
+; ==================== 热键定义（受模块开关控制） ====================
+#HotIf ModuleStates["fArea"]
+
 /*
 * CapsLock F1
 */
-CapsLock & 1::
-  if getkeystate("alt") = 0
-    Send, {F1}
-  else
-    Send, +{F1}
-return
+CapsLock & 1:: {
+    SendFunctionKey("F1")
+}
 
 /*
 * CapsLock F2
 */
-CapsLock & 2::
-  if getkeystate("alt") = 0
-    Send, {F2}
-  else
-    Send, +{F2}
-return
+CapsLock & 2:: {
+    SendFunctionKey("F2")
+}
 
 /*
 * CapsLock F3
 */
-CapsLock & 3::
-  if getkeystate("alt") = 0
-    Send, {F3}
-  else
-    Send, +{F3}
-return
+CapsLock & 3:: {
+    SendFunctionKey("F3")
+}
 
 /*
 * CapsLock F4
 */
-CapsLock & 4::
-  if getkeystate("alt") = 0
-    Send, {F4}
-  else
-    Send, +{F4}
-return
+CapsLock & 4:: {
+    SendFunctionKey("F4")
+}
 
 /*
 * CapsLock F5
 */
-CapsLock & 5::
-  if getkeystate("alt") = 0
-    Send, {F5}
-  else
-    Send, +{F5}
-return
+CapsLock & 5:: {
+    SendFunctionKey("F5")
+}
 
 /*
 * CapsLock F6
 */
-CapsLock & 6::
-  if getkeystate("alt") = 0
-    Send, {F6}
-  else
-    Send, +{F6}
-return
+CapsLock & 6:: {
+    SendFunctionKey("F6")
+}
 
 /*
 * CapsLock F7
 */
-CapsLock & 7::
-  if getkeystate("alt") = 0
-    Send, {F7}
-  else
-    Send, +{F7}
-return
+CapsLock & 7:: {
+    SendFunctionKey("F7")
+}
 
 /*
 * CapsLock F8
 */
-CapsLock & 8::
-  if getkeystate("alt") = 0
-    Send, {F8}
-  else
-    Send, +{F8}
-return
+CapsLock & 8:: {
+    SendFunctionKey("F8")
+}
 
 /*
 * CapsLock F9
 */
-CapsLock & 9::
-  if getkeystate("alt") = 0
-    Send, {F9}
-  else
-    Send, +{F9}
-return
+CapsLock & 9:: {
+    SendFunctionKey("F9")
+}
 
 /*
 * CapsLock 0
 */
-CapsLock & 0::
-  if getkeystate("alt") = 0
-    Send, {F10}
-  else
-    Send, +{F10}
-return
+CapsLock & 0:: {
+    SendFunctionKey("F10")
+}
 
 /*
 * CapsLock -
 */
-CapsLock & -::
-  if getkeystate("alt") = 0
-    Send, {F11}
-  else
-    Send, +{F11}
-return
+CapsLock & -:: {
+    SendFunctionKey("F11")
+}
 
 /*
 * CapsLock +
 */
-CapsLock & +::
-  if getkeystate("alt") = 0
-    Send, {F12}
-  else
-    Send, +{F12}
-return
+CapsLock & +:: {
+    SendFunctionKey("F12")
+}
 
 ; ---------------
 ;  F区 单键操作模式
@@ -130,161 +121,78 @@ return
 
 ; 按下两次 ESC 键开启 单键F区操作模式
 
-~ESC::
-  if esc_presses > 0 ; SetTimer 已经启动, 所以我们记录键击.
-  {
-    esc_presses += 1
-    return
-  }
-  ; 否则, 这是新开始系列中的首次按下. 把次数设为 1 并启动
-  ; 计时器：
-  esc_presses = 1
-  SetTimer, KeyEscDbClick, 400 ; 在 400 毫秒内等待更多的键击.
-return
+~Esc:: {
+    global EscPresses
+    if EscPresses > 0 ; SetTimer 已经启动, 所以我们记录键击.
+    {
+        EscPresses += 1
+        return
+    }
+    ; 否则, 这是新开始系列中的首次按下. 把次数设为 1 并启动
+    ; 计时器：
+    EscPresses := 1
+    SetTimer(KeyEscDbClick, -400) ; 在 400 毫秒内等待更多的键击.
+}
 
-KeyEscDbClick:
-  SetTimer, KeyEscDbClick, off
-  if esc_presses = 1 ; 此键按下了一次.
-  {
-    return
-  }
-  else if esc_presses = 2 ; 此键按下了两次.
-  {
-    FStatus := !FStatus
-  }
+KeyEscDbClick() {
+    global EscPresses, FStatus
+    if EscPresses = 1 ; 此键按下了一次.
+    {
+        return
+    }
+    else if EscPresses = 2 ; 此键按下了两次.
+    {
+        FStatus := !FStatus
+    }
 
-  esc_presses = 0
-return
+    EscPresses := 0
+}
 
-1::
-  if (FStatus)
-  {
-    Send, {F1}
-  }
-  else
-  {
-    Send, {Numpad1}
-  }
-return
+1:: {
+    SendFunctionOrFallback("F1", "Numpad1")
+}
 
-2::
-  if (FStatus)
-  {
-    Send, {F2}
-  }
-  else
-  {
-    Send, {Numpad2}
-  }
-return
+2:: {
+    SendFunctionOrFallback("F2", "Numpad2")
+}
 
-3::
-  if (FStatus)
-  {
-    Send, {F3}
-  }
-  else
-  {
-    Send, {Numpad3}
-  }
-return
+3:: {
+    SendFunctionOrFallback("F3", "Numpad3")
+}
 
-4::
-  if (FStatus)
-  {
-    Send, {F4}
-  }
-  else
-  {
-    Send, {Numpad4}
-  }
-return
+4:: {
+    SendFunctionOrFallback("F4", "Numpad4")
+}
 
-5::
-  if (FStatus)
-  {
-    Send, {F5}
-  }
-  else
-  {
-    Send, {Numpad5}
-  }
-return
+5:: {
+    SendFunctionOrFallback("F5", "Numpad5")
+}
 
-6::
-  if (FStatus)
-  {
-    Send, {F6}
-  }
-  else
-  {
-    Send, {Numpad6}
-  }
-return
+6:: {
+    SendFunctionOrFallback("F6", "Numpad6")
+}
 
-7::
-  if (FStatus)
-  {
-    Send, {F7}
-  }
-  else
-  {
-    Send, {Numpad7}
-  }
-return
+7:: {
+    SendFunctionOrFallback("F7", "Numpad7")
+}
 
-8::
-  if (FStatus)
-  {
-    Send, {F8}
-  }
-  else
-  {
-    Send, {Numpad8}
-  }
-return
+8:: {
+    SendFunctionOrFallback("F8", "Numpad8")
+}
 
-9::
-  if (FStatus)
-  {
-    Send, {F9}
-  }
-  else
-  {
-    Send, {Numpad9}
-  }
-return
+9:: {
+    SendFunctionOrFallback("F9", "Numpad9")
+}
 
-0::
-  if (FStatus)
-  {
-    Send, {F10}
-  }
-  else
-  {
-    Send, {Numpad0}
-  }
-return
+0:: {
+    SendFunctionOrFallback("F10", "Numpad0")
+}
 
--::
-  if (FStatus)
-  {
-    Send, {F11}
-  }
-  else
-  {
-    Send, {NumpadSub}
-  }
-return
+-:: {
+    SendFunctionOrFallback("F11", "NumpadSub")
+}
 
-=::
-  if (FStatus)
-  {
-    Send, {F12}
-  }
-  else
-  {
-    Send, {Text}=
-  }
-return
-
+#HotIf  ; 结束条件
+=:: {
+    SendFunctionOrFallback("F12", "=", true)
+}
