@@ -148,6 +148,8 @@ KeyEscDbClick() {
     EscPresses := 0
 }
 
+#HotIf ModuleStates["fArea"] && !GetKeyState("Alt", "P") && !GetKeyState("Ctrl", "P") && !GetKeyState("Shift", "P") && !GetKeyState("LWin", "P") && !GetKeyState("RWin", "P")
+
 1:: {
     SendFunctionOrFallback("F1", "Numpad1")
 }

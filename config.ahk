@@ -8,10 +8,11 @@ global ModuleStates := Map()
 ; 模块信息 Map (模块名 -> 详细信息)
 global ModuleInfo := Map()
 
-; 应用程序路径配置 (从 config.ini 读取)
-global VscodePath := ""
-global EdgePath := ""
-global WeComPath := ""
+; 窗口切换配置列表
+global WinSwitchItems := []
+
+; WinSwitch 日志开关（从 config.ini 读取）
+global WinSwitchLogEnabled := false
 
 ; 配置文件路径
 global ConfigFilePath := A_ScriptDir . "\config.ini"
@@ -78,11 +79,9 @@ InitModuleInfo() {
     ; 窗口切换模块
     ModuleInfo["winSwitch"] := Map(
         "name", "窗口快速切换",
-        "description", "快速切换或启动常用应用程序。未启动则启动，后台则激活，已激活则最小化。",
+        "description", "通过配置的快捷键快速切换或启动常用应用程序。未启动则启动，后台则激活，已激活则隐藏。",
         "hotkeys", [
-            "Alt + 1: VSCode",
-            "Alt + 2: Edge 浏览器",
-            "Alt + 3: 企业微信"
+            "请在配置窗口或 config.ini 的 [WinSwitch] 中维护"
         ]
     )
 
@@ -101,7 +100,7 @@ InitModuleInfo() {
 
 ; 加载配置文件
 LoadConfig() {
-    global ModuleStates, VscodePath, EdgePath, WeComPath, ConfigFilePath
+    global ModuleStates, ConfigFilePath
 
     ; 如果配置文件不存在，创建默认配置
     if !FileExist(ConfigFilePath) {
@@ -118,11 +117,13 @@ LoadConfig() {
         ModuleStates["winSwitch"] := IniRead(ConfigFilePath, "Modules", "winSwitch", "1") = "1"
         ModuleStates["symbol"] := IniRead(ConfigFilePath, "Modules", "symbol", "1") = "1"
 
-        ; 读取应用程序路径
-        VscodePath := IniRead(ConfigFilePath, "Paths", "VSCode", "D:\SoftWare\Develop\Microsoft VS Code\Code.exe")
-        EdgePath := IniRead(ConfigFilePath, "Paths", "Edge",
-            "explorer.exe shell:Appsfolder\Microsoft.MicrosoftEdge_8wekyb3d8bbwe!MicrosoftEdge")
-        WeComPath := IniRead(ConfigFilePath, "Paths", "WeCom", "D:\SoftWare\Communication\WeCom\WXWork\WXWork.exe")
+        LoadWinSwitchConfig()
+
+        ; 读取 WinSwitch 日志配置
+        global WinSwitchLogEnabled
+        WinSwitchLogEnabled := IniRead(ConfigFilePath, "WinSwitch", "log", "0") = "1"
+
+        UpdateWinSwitchModuleInfo()
     } catch Error as err {
         MsgBox("配置文件读取失败，使用默认配置。`n错误信息: " . err.Message, "警告", "Icon!")
         CreateDefaultConfig()
@@ -131,7 +132,7 @@ LoadConfig() {
 
 ; 保存配置文件
 SaveConfig() {
-    global ModuleStates, VscodePath, EdgePath, WeComPath, ConfigFilePath
+    global ModuleStates, ConfigFilePath
 
     try {
         ; 保存模块状态
@@ -142,10 +143,8 @@ SaveConfig() {
         IniWrite(ModuleStates["winSwitch"] ? "1" : "0", ConfigFilePath, "Modules", "winSwitch")
         IniWrite(ModuleStates["symbol"] ? "1" : "0", ConfigFilePath, "Modules", "symbol")
 
-        ; 保存应用程序路径
-        IniWrite(VscodePath, ConfigFilePath, "Paths", "VSCode")
-        IniWrite(EdgePath, ConfigFilePath, "Paths", "Edge")
-        IniWrite(WeComPath, ConfigFilePath, "Paths", "WeCom")
+        SaveWinSwitchConfig()
+        UpdateWinSwitchModuleInfo()
 
         return true
     } catch Error as err {
@@ -156,7 +155,7 @@ SaveConfig() {
 
 ; 创建默认配置
 CreateDefaultConfig() {
-    global ModuleStates, VscodePath, EdgePath, WeComPath
+    global ModuleStates, WinSwitchItems
 
     ; 默认所有模块启用
     ModuleStates["vim"] := true
@@ -166,13 +165,198 @@ CreateDefaultConfig() {
     ModuleStates["winSwitch"] := true
     ModuleStates["symbol"] := true
 
-    ; 默认应用程序路径（从 winSwitch.ahk 迁移）
-    VscodePath := "D:\SoftWare\Develop\Microsoft VS Code\Code.exe"
-    EdgePath := "explorer.exe shell:Appsfolder\Microsoft.MicrosoftEdge_8wekyb3d8bbwe!MicrosoftEdge"
-    WeComPath := "D:\SoftWare\Communication\WeCom\WXWork\WXWork.exe"
+    WinSwitchItems := GetDefaultWinSwitchItems()
 
     ; 保存到文件
     SaveConfig()
+}
+
+GetDefaultWinSwitchItems() {
+    return [
+        Map("name", "VSCode", "hotkey", "!1", "exe", "Code.exe", "target",
+            "D:\Software\Develop\Microsoft VS Code\Code.exe"),
+        Map("name", "Edge 浏览器", "hotkey", "!2", "exe", "msedge.exe", "target",
+            "explorer.exe shell:Appsfolder\Microsoft.MicrosoftEdge_8wekyb3d8bbwe!MicrosoftEdge"),
+        Map("name", "企业微信", "hotkey", "!3", "exe", "WXWork.exe", "target", "D:\Software\Communication\WXWork")
+    ]
+}
+
+LoadWinSwitchConfig() {
+    global WinSwitchItems, ConfigFilePath
+
+    WinSwitchItems := []
+
+    ; 使用UTF-8编码读取配置文件，避免乱码问题
+    try {
+        content := FileRead(ConfigFilePath, "UTF-8")
+    } catch {
+        WinSwitchItems := GetDefaultWinSwitchItems()
+        return
+    }
+
+    ; 解析WinSwitch配置段
+    inWinSwitchSection := false
+    lines := StrSplit(content, "`n")
+    count := 0
+
+    for line in lines {
+        line := Trim(line)
+
+        ; 检测[WinSwitch]段
+        if line = "[WinSwitch]" {
+            inWinSwitchSection := true
+            continue
+        }
+
+        ; 检测其他段的开始，结束WinSwitch段的解析
+        if inWinSwitchSection && SubStr(line, 1, 1) = "[" {
+            break
+        }
+
+        ; 在WinSwitch段中解析配置项
+        if inWinSwitchSection && line != "" && SubStr(line, 1, 1) != ";" {
+            ; 解析形如 Item1Name=VSCode 的配置
+            if RegExMatch(line, "i)^Item(\d+)Name=(.*)", &match) {
+                itemIndex := match[1]
+                prefix := "Item" . itemIndex
+
+                ; 从已解析的行中提取该Item的所有字段
+                name := ""
+                hotkey := ""
+                exe := ""
+                target := ""
+
+                ; 遍历所有行，找到对应Item的所有字段
+                for checkLine in lines {
+                    checkLine := Trim(checkLine)
+                    if RegExMatch(checkLine, "i)^" . prefix . "Name=(.*)", &m)
+                        name := m[1]
+                    if RegExMatch(checkLine, "i)^" . prefix . "Hotkey=(.*)", &m)
+                        hotkey := m[1]
+                    if RegExMatch(checkLine, "i)^" . prefix . "Exe=(.*)", &m)
+                        exe := m[1]
+                    if RegExMatch(checkLine, "i)^" . prefix . "Target=(.*)", &m)
+                        target := m[1]
+                }
+
+                if hotkey != "" && exe != "" && target != "" {
+                    WinSwitchItems.Push(Map("name", name, "hotkey", hotkey, "exe", exe, "target", target))
+                    count++
+                }
+            }
+        }
+    }
+
+    if WinSwitchItems.Length = 0
+        WinSwitchItems := GetDefaultWinSwitchItems()
+}
+
+SaveWinSwitchConfig() {
+    global WinSwitchItems, ConfigFilePath
+
+    ; 读取现有配置文件内容，保留非WinSwitch的部分
+    existingContent := ""
+    try {
+        existingContent := FileRead(ConfigFilePath, "UTF-8")
+    } catch {
+        ; 文件不存在，创建新文件
+    }
+
+    ; 构建新的WinSwitch配置段
+    newWinSwitchSection := "[WinSwitch]`n"
+
+    loop WinSwitchItems.Length {
+        item := WinSwitchItems[A_Index]
+        prefix := "Item" . A_Index
+        newWinSwitchSection .= prefix . "Name=" . item["name"] . "`n"
+        newWinSwitchSection .= prefix . "Hotkey=" . item["hotkey"] . "`n"
+        newWinSwitchSection .= prefix . "Exe=" . item["exe"] . "`n"
+        newWinSwitchSection .= prefix . "Target=" . item["target"] . "`n"
+    }
+
+    ; 移除旧的WinSwitch段，保留其他段
+    lines := StrSplit(existingContent, "`n")
+    resultLines := []
+    skipWinSwitch := false
+
+    for line in lines {
+        if line = "[WinSwitch]" {
+            skipWinSwitch := true
+            continue
+        }
+        if skipWinSwitch && SubStr(Trim(line), 1, 1) = "[" {
+            skipWinSwitch := false
+        }
+        if !skipWinSwitch {
+            resultLines.Push(line)
+        }
+    }
+
+    ; 构建最终内容：保留的内容 + 新的WinSwitch段
+    finalContent := ""
+    for line in resultLines {
+        if Trim(line) != ""
+            finalContent .= line . "`n"
+    }
+    finalContent .= newWinSwitchSection
+
+    ; 使用UTF-8编码写入文件
+    try {
+        file := FileOpen(ConfigFilePath, "w", "UTF-8")
+        file.Write(finalContent)
+        file.Close()
+    } catch Error as err {
+        MsgBox("写入配置文件失败: " . err.Message)
+    }
+}
+
+UpdateWinSwitchModuleInfo() {
+    global ModuleInfo, WinSwitchItems
+
+    if !ModuleInfo.Has("winSwitch")
+        return
+
+    hotkeys := []
+    for item in WinSwitchItems {
+        displayName := item["name"] != "" ? item["name"] : item["exe"]
+        hotkeys.Push(FormatHotkeyForDisplay(item["hotkey"]) . ": " . displayName)
+    }
+
+    if hotkeys.Length = 0
+        hotkeys.Push("尚未配置窗口切换项")
+
+    ModuleInfo["winSwitch"]["hotkeys"] := hotkeys
+}
+
+FormatHotkeyForDisplay(hotkey) {
+    parts := []
+    rest := hotkey
+
+    while rest != "" {
+        ch := SubStr(rest, 1, 1)
+
+        if ch = "!" {
+            parts.Push("Alt")
+        } else if ch = "^" {
+            parts.Push("Ctrl")
+        } else if ch = "+" {
+            parts.Push("Shift")
+        } else if ch = "#" {
+            parts.Push("Win")
+        } else {
+            break
+        }
+
+        rest := SubStr(rest, 2)
+    }
+
+    parts.Push(rest)
+    text := ""
+    for part in parts {
+        text .= (text = "" ? "" : " + ") . part
+    }
+
+    return text
 }
 
 ; 切换模块状态

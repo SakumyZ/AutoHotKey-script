@@ -4,6 +4,8 @@
 
 ; 全局变量：GUI 实例
 global g_ConfigGui := ""
+global g_WinSwitchGui := ""
+global g_WinSwitchListView := ""
 
 ; 显示配置窗口
 ShowConfigGui() {
@@ -40,12 +42,22 @@ ShowConfigGui() {
             "xm w320 Checked" . (ModuleStates[moduleName] ? "1" : "0"),
             info["name"]
         )
-        cb.OnEvent("Click", (*) => OnModuleToggle(moduleName, cb))
+        cb.OnEvent("Click", CreateCheckboxHandler(moduleName, cb))
         checkboxes[moduleName] := cb
 
         ; 创建"详情"按钮（x360 表示绝对位置，yp 表示与上一个控件同行）
         btn := g_ConfigGui.AddButton("x360 yp w100 h30", "查看详情")
-        btn.OnEvent("Click", (*) => ShowModuleDetails(moduleName))
+        btn.OnEvent("Click", CreateDetailsHandler(moduleName))
+    }
+
+    ; 为每个checkbox创建独立的事件处理器，正确捕获moduleName和cb
+    CreateCheckboxHandler(moduleName, cb) {
+        return (*) => OnModuleToggle(moduleName, cb)
+    }
+
+    ; 为每个模块的"详情"按钮创建独立的事件处理器，正确捕获moduleName
+    CreateDetailsHandler(moduleName) {
+        return (*) => ShowModuleDetails(moduleName)
     }
 
     ; 分隔线
@@ -61,14 +73,17 @@ ShowConfigGui() {
     btnCheckConflict := g_ConfigGui.AddButton("x+10 w140 h30", "🔍 检测冲突")
     btnCheckConflict.OnEvent("Click", (*) => CheckHotkeyConflicts())
 
+    btnWinSwitch := g_ConfigGui.AddButton("xm w140 h30", "窗口切换配置")
+    btnWinSwitch.OnEvent("Click", (*) => ShowWinSwitchConfigGui())
+
     ; 快捷操作按钮行2
-    btnExport := g_ConfigGui.AddButton("xm w140 h30", "📤 导出配置")
+    btnExport := g_ConfigGui.AddButton("x+10 w140 h30", "📤 导出配置")
     btnExport.OnEvent("Click", (*) => ExportConfig())
 
     btnImport := g_ConfigGui.AddButton("x+10 w140 h30", "📥 导入配置")
     btnImport.OnEvent("Click", (*) => ImportConfig())
 
-    btnReload := g_ConfigGui.AddButton("x+10 w140 h30", "🔄 重载脚本")
+    btnReload := g_ConfigGui.AddButton("xm w140 h30", "🔄 重载脚本")
     btnReload.OnEvent("Click", (*) => ReloadScript())
 
     ; 关闭窗口事件
@@ -76,6 +91,174 @@ ShowConfigGui() {
 
     ; 显示窗口
     g_ConfigGui.Show("w500 h520")
+}
+
+ShowWinSwitchConfigGui() {
+    global g_WinSwitchGui, g_WinSwitchListView
+
+    if IsObject(g_WinSwitchGui) {
+        try {
+            RefreshWinSwitchListView()
+            g_WinSwitchGui.Show()
+            return
+        }
+    }
+
+    g_WinSwitchGui := Gui("+Resize", "窗口切换配置")
+    g_WinSwitchGui.SetFont("s10", "Microsoft YaHei UI")
+    g_WinSwitchGui.MarginX := 16
+    g_WinSwitchGui.MarginY := 14
+
+    g_WinSwitchGui.AddText("w680", "维护窗口切换项，保存后即时重新注册热键")
+    g_WinSwitchListView := g_WinSwitchGui.AddListView("xm w680 h260 Grid", ["名称", "热键", "进程名", "启动目标"])
+
+    btnAdd := g_WinSwitchGui.AddButton("xm w100 h30", "新增")
+    btnAdd.OnEvent("Click", (*) => ShowWinSwitchItemEditor())
+
+    btnEdit := g_WinSwitchGui.AddButton("x+8 w100 h30", "编辑")
+    btnEdit.OnEvent("Click", (*) => EditSelectedWinSwitchItem())
+
+    btnDelete := g_WinSwitchGui.AddButton("x+8 w100 h30", "删除")
+    btnDelete.OnEvent("Click", (*) => DeleteSelectedWinSwitchItem())
+
+    btnClose := g_WinSwitchGui.AddButton("x+268 w100 h30", "关闭")
+    btnClose.OnEvent("Click", (*) => g_WinSwitchGui.Hide())
+
+    g_WinSwitchGui.OnEvent("Close", (*) => g_WinSwitchGui.Hide())
+    RefreshWinSwitchListView()
+    g_WinSwitchGui.Show("w720 h380")
+}
+
+RefreshWinSwitchListView() {
+    global WinSwitchItems, g_WinSwitchListView
+
+    if !IsObject(g_WinSwitchListView)
+        return
+
+    g_WinSwitchListView.Delete()
+    for item in WinSwitchItems {
+        g_WinSwitchListView.Add(,
+            item["name"],
+            item["hotkey"],
+            item["exe"],
+            item["target"]
+        )
+    }
+
+    loop 4
+        g_WinSwitchListView.ModifyCol(A_Index, "AutoHdr")
+}
+
+EditSelectedWinSwitchItem() {
+    global g_WinSwitchListView
+
+    row := g_WinSwitchListView.GetNext()
+    if row = 0 {
+        MsgBox("请先选择要编辑的窗口切换项。", "提示", "Icon!")
+        return
+    }
+
+    ShowWinSwitchItemEditor(row)
+}
+
+DeleteSelectedWinSwitchItem() {
+    global WinSwitchItems, g_WinSwitchListView
+
+    row := g_WinSwitchListView.GetNext()
+    if row = 0 {
+        MsgBox("请先选择要删除的窗口切换项。", "提示", "Icon!")
+        return
+    }
+
+    name := WinSwitchItems[row]["name"] != "" ? WinSwitchItems[row]["name"] : WinSwitchItems[row]["exe"]
+    result := MsgBox("确定删除窗口切换项吗？", "确认删除", "YesNo Icon?")
+    if result = "No"
+        return
+
+    WinSwitchItems.RemoveAt(row)
+    SaveWinSwitchAndRefresh()
+}
+
+ShowWinSwitchItemEditor(index := 0) {
+    global WinSwitchItems, g_WinSwitchGui
+
+    isEdit := index > 0
+    item := isEdit ? WinSwitchItems[index] : Map("name", "", "hotkey", "", "exe", "", "target", "")
+
+    editor := Gui("+Owner" . g_WinSwitchGui.Hwnd, isEdit ? "编辑窗口切换项" : "新增窗口切换项")
+    editor.SetFont("s10", "Microsoft YaHei UI")
+    editor.MarginX := 16
+    editor.MarginY := 14
+
+    editor.AddText("xm w90", "名称")
+    nameEdit := editor.AddEdit("x120 yp w420", item["name"])
+
+    editor.AddText("xm w90", "热键")
+    hotkeyEdit := editor.AddEdit("x120 yp w420", item["hotkey"])
+
+    editor.AddText("xm w90", "进程名")
+    exeEdit := editor.AddEdit("x120 yp w420", item["exe"])
+
+    editor.AddText("xm w90", "启动目标")
+    targetEdit := editor.AddEdit("x120 yp w420", item["target"])
+
+    browseBtn := editor.AddButton("x+8 yp w70 h28", "选择")
+    browseBtn.OnEvent("Click", (*) => SelectWinSwitchTarget(targetEdit, exeEdit, nameEdit))
+
+    saveBtn := editor.AddButton("xm w100 h30", "保存")
+    saveBtn.OnEvent("Click", (*) => SaveWinSwitchItem(editor, index, nameEdit, hotkeyEdit, exeEdit, targetEdit))
+
+    cancelBtn := editor.AddButton("x+8 w100 h30", "取消")
+    cancelBtn.OnEvent("Click", (*) => editor.Destroy())
+
+    editor.Show("w650 h250")
+}
+
+SelectWinSwitchTarget(targetEdit, exeEdit, nameEdit) {
+    selectedFile := FileSelect("1", , "选择应用程序", "可执行文件 (*.exe)")
+
+    if selectedFile = ""
+        return
+
+    targetEdit.Value := selectedFile
+    SplitPath(selectedFile, &fileName, , , &nameNoExt)
+    exeEdit.Value := fileName
+
+    if nameEdit.Value = ""
+        nameEdit.Value := nameNoExt
+}
+
+SaveWinSwitchItem(editor, index, nameEdit, hotkeyEdit, exeEdit, targetEdit) {
+    global WinSwitchItems
+
+    name := Trim(nameEdit.Value)
+    hotkey := Trim(hotkeyEdit.Value)
+    exe := Trim(exeEdit.Value)
+    target := Trim(targetEdit.Value)
+
+    if hotkey = "" || exe = "" || target = "" {
+        MsgBox("热键、进程名、启动目标不能为空。", "配置不完整", "Icon!")
+        return
+    }
+
+    item := Map("name", name, "hotkey", hotkey, "exe", exe, "target", target)
+
+    if index > 0
+        WinSwitchItems[index] := item
+    else
+        WinSwitchItems.Push(item)
+
+    editor.Destroy()
+    SaveWinSwitchAndRefresh()
+}
+
+SaveWinSwitchAndRefresh() {
+    SaveConfig()
+
+    try RegisterWinSwitchHotkeys()
+
+    RefreshWinSwitchListView()
+    TrayTip("窗口切换配置已保存", "AutoHotKey 脚本管理器", "Mute")
 }
 
 ; ==================== 事件处理函数 ====================
@@ -86,6 +269,9 @@ OnModuleToggle(moduleName, checkboxCtrl) {
 
     ModuleStates[moduleName] := checkboxCtrl.Value
     SaveConfig()
+
+    if moduleName = "winSwitch"
+        try RegisterWinSwitchHotkeys()
 
     ; 提示
     status := ModuleStates[moduleName] ? "已启用" : "已禁用"
@@ -98,6 +284,7 @@ OnEnableAll() {
     global checkboxes
 
     EnableAllModules()
+    try RegisterWinSwitchHotkeys()
 
     ; 更新 UI
     for moduleName, cb in checkboxes {
@@ -116,6 +303,7 @@ OnDisableAll() {
         return
 
     DisableAllModules()
+    try RegisterWinSwitchHotkeys()
 
     ; 更新 UI
     for moduleName, cb in checkboxes {
@@ -138,7 +326,7 @@ ShowModuleDetails(moduleName) {
         details .= "  • " . hotkey . "`n"
     }
 
-    MsgBox(details, info["name"] . " - 详细信息", "Icon64")
+    MsgBox(details, info["name"] . " - 详细信息", "Icon?")
 }
 
 ; 检测热键冲突
@@ -216,6 +404,7 @@ ImportConfig() {
     try {
         FileCopy(selectedFile, ConfigFilePath, 1)
         LoadConfig()
+        try RegisterWinSwitchHotkeys()
 
         ; 更新 UI
         global checkboxes

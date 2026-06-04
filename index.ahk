@@ -27,6 +27,7 @@ InitTrayMenu() {
     ; 添加"打开设置"菜单项
     A_TrayMenu.Add("⚙ 打开设置", (*) => ShowConfigGui())
     A_TrayMenu.Default := "⚙ 打开设置"
+    A_TrayMenu.Add("⌨ 查看按键历史", (*) => KeyHistory())
 
     A_TrayMenu.Add()  ; 分隔线
 
@@ -55,6 +56,9 @@ ToggleModuleFromTray(moduleName, *) {
     ; 切换状态
     ModuleStates[moduleName] := !ModuleStates[moduleName]
     SaveConfig()
+
+    if moduleName = "winSwitch"
+        try RegisterWinSwitchHotkeys()
 
     ; 更新菜单勾选状态
     info := ModuleInfo[moduleName]
