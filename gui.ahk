@@ -6,6 +6,8 @@
 global g_ConfigGui := ""
 global g_WinSwitchGui := ""
 global g_WinSwitchListView := ""
+global g_QuickPhraseGui := ""
+global g_QuickPhraseListView := ""
 
 ; 显示配置窗口
 ShowConfigGui() {
@@ -63,8 +65,8 @@ ShowConfigGui() {
     ; 分隔线
     g_ConfigGui.AddText("xm w460 cGray", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-    ; 快捷操作按钮行1
-    btnEnableAll := g_ConfigGui.AddButton("w140 h30", "✓ 全部启用")
+    ; 快捷操作按钮行1（一行3列）
+    btnEnableAll := g_ConfigGui.AddButton("xm w140 h30", "✓ 全部启用")
     btnEnableAll.OnEvent("Click", (*) => OnEnableAll())
 
     btnDisableAll := g_ConfigGui.AddButton("x+10 w140 h30", "✗ 全部禁用")
@@ -73,24 +75,31 @@ ShowConfigGui() {
     btnCheckConflict := g_ConfigGui.AddButton("x+10 w140 h30", "🔍 检测冲突")
     btnCheckConflict.OnEvent("Click", (*) => CheckHotkeyConflicts())
 
+    ; 快捷操作按钮行2（一行3列）
     btnWinSwitch := g_ConfigGui.AddButton("xm w140 h30", "窗口切换配置")
     btnWinSwitch.OnEvent("Click", (*) => ShowWinSwitchConfigGui())
 
-    ; 快捷操作按钮行2
+    btnQuickPhrase := g_ConfigGui.AddButton("x+10 w140 h30", "快捷短语配置")
+    btnQuickPhrase.OnEvent("Click", (*) => ShowQuickPhraseConfigGui())
+
     btnExport := g_ConfigGui.AddButton("x+10 w140 h30", "📤 导出配置")
     btnExport.OnEvent("Click", (*) => ExportConfig())
 
-    btnImport := g_ConfigGui.AddButton("x+10 w140 h30", "📥 导入配置")
+    ; 快捷操作按钮行3（一行3列）
+    btnImport := g_ConfigGui.AddButton("xm w140 h30", "📥 导入配置")
     btnImport.OnEvent("Click", (*) => ImportConfig())
 
-    btnReload := g_ConfigGui.AddButton("xm w140 h30", "🔄 重载脚本")
+    btnReload := g_ConfigGui.AddButton("x+10 w140 h30", "🔄 重载脚本")
     btnReload.OnEvent("Click", (*) => ReloadScript())
+
+    btnViewHelp := g_ConfigGui.AddButton("x+10 w140 h30", "ℹ 查看帮助")
+    btnViewHelp.OnEvent("Click", (*) => ShowHelpInfo())
 
     ; 关闭窗口事件
     g_ConfigGui.OnEvent("Close", (*) => g_ConfigGui.Hide())
 
     ; 显示窗口
-    g_ConfigGui.Show("w500 h520")
+    g_ConfigGui.Show("w500 h600")
 }
 
 ShowWinSwitchConfigGui() {
@@ -263,6 +272,19 @@ SaveWinSwitchAndRefresh() {
 
 ; ==================== 事件处理函数 ====================
 
+; 更新托盘菜单的勾选状态
+UpdateTrayMenuCheckState(moduleName) {
+    global ModuleInfo, ModuleStates
+
+    info := ModuleInfo[moduleName]
+    menuText := info["name"]
+
+    if ModuleStates[moduleName]
+        A_TrayMenu.Check(menuText)
+    else
+        A_TrayMenu.Uncheck(menuText)
+}
+
 ; 模块开关切换
 OnModuleToggle(moduleName, checkboxCtrl) {
     global ModuleStates
@@ -272,6 +294,12 @@ OnModuleToggle(moduleName, checkboxCtrl) {
 
     if moduleName = "winSwitch"
         try RegisterWinSwitchHotkeys()
+
+    if moduleName = "quickPhrase"
+        try RegisterQuickPhraseHotkeys()
+
+    ; 同时更新托盘菜单的勾选状态
+    UpdateTrayMenuCheckState(moduleName)
 
     ; 提示
     status := ModuleStates[moduleName] ? "已启用" : "已禁用"
@@ -285,10 +313,13 @@ OnEnableAll() {
 
     EnableAllModules()
     try RegisterWinSwitchHotkeys()
+    try RegisterQuickPhraseHotkeys()
 
-    ; 更新 UI
+    ; 更新 GUI UI
     for moduleName, cb in checkboxes {
         cb.Value := 1
+        ; 同时更新托盘菜单
+        UpdateTrayMenuCheckState(moduleName)
     }
 
     TrayTip("已启用所有模块", "AutoHotKey 脚本管理器", "Mute")
@@ -304,10 +335,13 @@ OnDisableAll() {
 
     DisableAllModules()
     try RegisterWinSwitchHotkeys()
+    try RegisterQuickPhraseHotkeys()
 
-    ; 更新 UI
+    ; 更新 GUI UI
     for moduleName, cb in checkboxes {
         cb.Value := 0
+        ; 同时更新托盘菜单
+        UpdateTrayMenuCheckState(moduleName)
     }
 
     TrayTip("已禁用所有模块", "AutoHotKey 脚本管理器", "Mute")
@@ -418,9 +452,194 @@ ImportConfig() {
     }
 }
 
+; 查看帮助信息
+ShowHelpInfo() {
+    helpText := "AutoHotkey 脚本管理器 - 使用帮助`n"
+        . "`n【模块功能】`n"
+        . "• VIM 导航模式：CapsLock 改造为修饰键，提供类 VIM 快捷键`n"
+        . "• F 功能键映射：F1-F9 快捷键映射系统`n"
+        . "• Emoji 快速输入：快速输入常用 Emoji`n"
+        . "• Markdown 标签快键：Markdown 格式快捷键`n"
+        . "• 窗口快速切换：快速切换窗口`n"
+        . "• 特殊符号输入：快速输入特殊符号`n"
+        . "• 快捷短语输入：快速输入自定义短语`n"
+        . "`n【快捷操作】`n"
+        . "• 全部启用：启用所有模块`n"
+        . "• 全部禁用：禁用所有模块`n"
+        . "• 检测冲突：检测热键冲突`n"
+        . "• 窗口切换配置：管理窗口快速切换设置`n"
+        . "• 快捷短语配置：管理自定义快捷短语`n"
+        . "• 导出/导入配置：备份和恢复设置`n"
+        . "• 重载脚本：重新加载配置文件`n"
+
+    MsgBox(helpText, "帮助信息", "Icon?")
+}
+
 ; 重载脚本
 ReloadScript() {
     result := MsgBox("确定要重载脚本吗？`n所有配置将重新加载。", "确认", "YesNo Icon?")
     if result = "Yes"
         Reload()
+}
+
+; ==================== 快捷短语配置管理 ====================
+
+ShowQuickPhraseConfigGui() {
+    global g_QuickPhraseGui, g_QuickPhraseListView
+
+    if IsObject(g_QuickPhraseGui) {
+        try {
+            RefreshQuickPhraseListView()
+            g_QuickPhraseGui.Show()
+            return
+        }
+    }
+
+    g_QuickPhraseGui := Gui("+Resize", "快捷短语配置")
+    g_QuickPhraseGui.SetFont("s10", "Microsoft YaHei UI")
+    g_QuickPhraseGui.MarginX := 16
+    g_QuickPhraseGui.MarginY := 14
+
+    g_QuickPhraseGui.AddText("w680", "维护快捷短语项，保存后即时生效")
+    g_QuickPhraseListView := g_QuickPhraseGui.AddListView("xm w680 h260 Grid", ["热键", "短语内容"])
+
+    btnAdd := g_QuickPhraseGui.AddButton("xm w100 h30", "新增")
+    btnAdd.OnEvent("Click", (*) => ShowQuickPhraseItemEditor())
+
+    btnEdit := g_QuickPhraseGui.AddButton("x+8 w100 h30", "编辑")
+    btnEdit.OnEvent("Click", (*) => EditSelectedQuickPhraseItem())
+
+    btnDelete := g_QuickPhraseGui.AddButton("x+8 w100 h30", "删除")
+    btnDelete.OnEvent("Click", (*) => DeleteSelectedQuickPhraseItem())
+
+    btnClose := g_QuickPhraseGui.AddButton("x+268 w100 h30", "关闭")
+    btnClose.OnEvent("Click", (*) => g_QuickPhraseGui.Hide())
+
+    g_QuickPhraseGui.OnEvent("Close", (*) => g_QuickPhraseGui.Hide())
+    RefreshQuickPhraseListView()
+    g_QuickPhraseGui.Show("w720 h380")
+}
+
+RefreshQuickPhraseListView() {
+    global QuickPhraseItems, g_QuickPhraseListView
+
+    if !IsObject(g_QuickPhraseListView)
+        return
+
+    g_QuickPhraseListView.Delete()
+    for item in QuickPhraseItems {
+        ; 如果短语过长，截断显示
+        phraseDisplay := item["phrase"]
+        if StrLen(phraseDisplay) > 50
+            phraseDisplay := SubStr(phraseDisplay, 1, 50) . "..."
+
+        g_QuickPhraseListView.Add(,
+            item["hotkey"],
+            phraseDisplay
+        )
+    }
+
+    loop 2
+        g_QuickPhraseListView.ModifyCol(A_Index, "AutoHdr")
+}
+
+EditSelectedQuickPhraseItem() {
+    global g_QuickPhraseListView
+
+    row := g_QuickPhraseListView.GetNext()
+    if row = 0 {
+        MsgBox("请先选择要编辑的快捷短语。", "提示", "Icon!")
+        return
+    }
+
+    ShowQuickPhraseItemEditor(row)
+}
+
+DeleteSelectedQuickPhraseItem() {
+    global QuickPhraseItems, g_QuickPhraseListView
+
+    row := g_QuickPhraseListView.GetNext()
+    if row = 0 {
+        MsgBox("请先选择要删除的快捷短语。", "提示", "Icon!")
+        return
+    }
+
+    result := MsgBox("确定删除此快捷短语吗？", "确认删除", "YesNo Icon?")
+    if result = "No"
+        return
+
+    QuickPhraseItems.RemoveAt(row)
+    SaveQuickPhraseAndRefresh()
+}
+
+ShowQuickPhraseItemEditor(index := 0) {
+    global QuickPhraseItems, g_QuickPhraseGui
+
+    isEdit := index > 0
+    item := isEdit ? QuickPhraseItems[index] : Map("hotkey", "", "phrase", "")
+
+    editor := Gui("+Owner" . g_QuickPhraseGui.Hwnd, isEdit ? "编辑快捷短语" : "新增快捷短语")
+    editor.SetFont("s10", "Microsoft YaHei UI")
+    editor.MarginX := 16
+    editor.MarginY := 14
+
+    editor.AddText("xm w90", "热键")
+    hotkeyEdit := editor.AddEdit("x120 yp w420", item["hotkey"])
+
+    editor.AddText("xm w90", "短语")
+    phraseEdit := editor.AddEdit("x120 yp w420 h150", item["phrase"])
+
+    editor.AddText("xm cGray", "热键格式示例: Ctrl+1, Alt+Shift+A, Win+Z 等")
+
+    btnSave := editor.AddButton("xm w100 h30", "保存")
+    btnSave.OnEvent("Click", (*) => SaveQuickPhraseItem(editor, hotkeyEdit, phraseEdit, index))
+
+    btnCancel := editor.AddButton("x+10 w100 h30", "取消")
+    btnCancel.OnEvent("Click", (*) => editor.Destroy())
+
+    editor.Show("w550 h350")
+}
+
+SaveQuickPhraseItem(editor, hotkeyEdit, phraseEdit, index) {
+    global QuickPhraseItems
+
+    hotkey := Trim(hotkeyEdit.Value)
+    phrase := Trim(phraseEdit.Value)
+
+    if hotkey = "" {
+        MsgBox("请输入热键！", "错误", "IconX")
+        return
+    }
+
+    if phrase = "" {
+        MsgBox("请输入短语内容！", "错误", "IconX")
+        return
+    }
+
+    if index > 0 {
+        ; 编辑模式
+        QuickPhraseItems[index]["hotkey"] := hotkey
+        QuickPhraseItems[index]["phrase"] := phrase
+    } else {
+        ; 新增模式
+        QuickPhraseItems.Push(Map("hotkey", hotkey, "phrase", phrase))
+    }
+
+    SaveQuickPhraseAndRefresh()
+    editor.Destroy()
+}
+
+SaveQuickPhraseAndRefresh() {
+    global g_QuickPhraseGui, QuickPhraseItems, ModuleStates
+
+    SaveQuickPhraseConfig()
+    UpdateQuickPhraseModuleInfo()
+    RefreshQuickPhraseListView()
+
+    ; 如果快捷短语模块已启用，重新注册热键
+    if ModuleStates["quickPhrase"] {
+        try RegisterQuickPhraseHotkeys()
+    }
+
+    TrayTip("快捷短语配置已保存", "AutoHotKey 脚本管理器", "Mute")
 }

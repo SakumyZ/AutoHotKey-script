@@ -14,6 +14,12 @@ global WinSwitchItems := []
 ; WinSwitch 日志开关（从 config.ini 读取）
 global WinSwitchLogEnabled := false
 
+; 快捷短语配置列表
+global QuickPhraseItems := []
+
+; 快捷短语数据文件路径
+global QuickPhraseFilePath := A_ScriptDir . "\quickPhrase.data"
+
 ; 配置文件路径
 global ConfigFilePath := A_ScriptDir . "\config.ini"
 
@@ -39,13 +45,13 @@ InitModuleInfo() {
     ; F 区映射模块
     ModuleInfo["fArea"] := Map(
         "name", "F 功能键映射",
-        "description", "双重模式的 F 键映射系统。CapsLock+数字始终可用，双击 ESC 切换单键模式。",
+        "description", "双重模式的 F 键映射系统。CapsLock+数字始终可用，双击 CapsLock 切换功能层。",
         "hotkeys", [
             "CapsLock + 1~9: F1~F9",
             "CapsLock + 0: F10",
             "CapsLock + -: F11",
             "CapsLock + =: F12",
-            "双击 ESC: 切换单键模式（数字键直接映射 F 键）"
+            "双击 CapsLock: 切换功能层（开启后数字键直接映射 F 键，鼠标旁显示状态）"
         ]
     )
 
@@ -94,6 +100,15 @@ InitModuleInfo() {
             ":q1: ~ :q10: → ①②③④⑤⑥⑦⑧⑨⑩"
         ]
     )
+
+    ; 快捷短语模块
+    ModuleInfo["quickPhrase"] := Map(
+        "name", "快捷短语",
+        "description", "通过自定义热键快速输入常用文本短语。",
+        "hotkeys", [
+            "请在配置窗口维护"
+        ]
+    )
 }
 
 ; ==================== 配置管理函数 ====================
@@ -116,14 +131,17 @@ LoadConfig() {
         ModuleStates["markdown"] := IniRead(ConfigFilePath, "Modules", "markdown", "1") = "1"
         ModuleStates["winSwitch"] := IniRead(ConfigFilePath, "Modules", "winSwitch", "1") = "1"
         ModuleStates["symbol"] := IniRead(ConfigFilePath, "Modules", "symbol", "1") = "1"
+        ModuleStates["quickPhrase"] := IniRead(ConfigFilePath, "Modules", "quickPhrase", "1") = "1"
 
         LoadWinSwitchConfig()
+        LoadQuickPhraseConfig()
 
         ; 读取 WinSwitch 日志配置
         global WinSwitchLogEnabled
         WinSwitchLogEnabled := IniRead(ConfigFilePath, "WinSwitch", "log", "0") = "1"
 
         UpdateWinSwitchModuleInfo()
+        UpdateQuickPhraseModuleInfo()
     } catch Error as err {
         MsgBox("配置文件读取失败，使用默认配置。`n错误信息: " . err.Message, "警告", "Icon!")
         CreateDefaultConfig()
@@ -142,8 +160,10 @@ SaveConfig() {
         IniWrite(ModuleStates["markdown"] ? "1" : "0", ConfigFilePath, "Modules", "markdown")
         IniWrite(ModuleStates["winSwitch"] ? "1" : "0", ConfigFilePath, "Modules", "winSwitch")
         IniWrite(ModuleStates["symbol"] ? "1" : "0", ConfigFilePath, "Modules", "symbol")
+        IniWrite(ModuleStates["quickPhrase"] ? "1" : "0", ConfigFilePath, "Modules", "quickPhrase")
 
         SaveWinSwitchConfig()
+        SaveQuickPhraseConfig()
         UpdateWinSwitchModuleInfo()
 
         return true
@@ -155,7 +175,7 @@ SaveConfig() {
 
 ; 创建默认配置
 CreateDefaultConfig() {
-    global ModuleStates, WinSwitchItems
+    global ModuleStates, WinSwitchItems, QuickPhraseItems
 
     ; 默认所有模块启用
     ModuleStates["vim"] := true
@@ -164,8 +184,10 @@ CreateDefaultConfig() {
     ModuleStates["markdown"] := true
     ModuleStates["winSwitch"] := true
     ModuleStates["symbol"] := true
+    ModuleStates["quickPhrase"] := true
 
     WinSwitchItems := GetDefaultWinSwitchItems()
+    QuickPhraseItems := []
 
     ; 保存到文件
     SaveConfig()
@@ -359,6 +381,133 @@ FormatHotkeyForDisplay(hotkey) {
     return text
 }
 
+UpdateQuickPhraseModuleInfo() {
+    global ModuleInfo, QuickPhraseItems
+
+    if !ModuleInfo.Has("quickPhrase")
+        return
+
+    hotkeys := []
+    for item in QuickPhraseItems {
+        if item["hotkey"] != "" {
+            phraseDisplay := item["phrase"]
+            if StrLen(phraseDisplay) > 30
+                phraseDisplay := SubStr(phraseDisplay, 1, 30) . "..."
+            hotkeys.Push(item["hotkey"] . ": " . phraseDisplay)
+        }
+    }
+
+    if hotkeys.Length = 0
+        hotkeys.Push("尚未配置快捷短语")
+
+    ModuleInfo["quickPhrase"]["hotkeys"] := hotkeys
+}
+
+; ==================== 快捷短语配置管理 ====================
+
+LoadQuickPhraseConfig() {
+    global QuickPhraseItems, QuickPhraseFilePath
+
+    QuickPhraseItems := []
+
+    if !FileExist(QuickPhraseFilePath) {
+        return
+    }
+
+    try {
+        content := FileRead(QuickPhraseFilePath, "UTF-8")
+    } catch {
+        return
+    }
+
+    try {
+        content := StrReplace(content, "`r`n", "`n")
+
+        ; 简单的 JSON 解析：逐行查找 {""hotkey"" 和 ""phrase""
+        lines := StrSplit(content, "`n")
+        currentItem := Map()
+
+        for line in lines {
+            line := Trim(line)
+
+            ; 查找 hotkey
+            if (RegExMatch(line, Format("{1}hotkey{1}\s*:\s*{1}([^{1}]*)", Chr(34)), &match)) {
+                currentItem["hotkey"] := match[1]
+            }
+
+            ; 查找 phrase - 简单匹配，不用复杂的字符类
+            if (RegExMatch(line, Format("{1}phrase{1}\s*:\s*{1}", Chr(34)), &pos_match)) {
+                startPos := pos_match.Pos + pos_match.Len
+                remainLine := SubStr(line, startPos)
+
+                ; 找到末尾的双引号
+                if (RegExMatch(remainLine, Format("^(.+?){1}", Chr(34)), &phrase_match)) {
+                    phrase := phrase_match[1]
+
+                    ; 处理转义字符
+                    phrase := StrReplace(phrase, "\\n", "`n")
+                    phrase := StrReplace(phrase, "\\r", "`r")
+                    phrase := StrReplace(phrase, "\\t", "`t")
+                    phrase := StrReplace(phrase, "\\", "\")
+                    phrase := StrReplace(phrase, Chr(34) . Chr(34), Chr(34))
+
+                    currentItem["phrase"] := phrase
+
+                    ; 如果有完整的键值对
+                    if (currentItem.Has("hotkey")) {
+                        QuickPhraseItems.Push(currentItem)
+                        currentItem := Map()
+                    }
+                }
+            }
+        }
+    } catch {
+        QuickPhraseItems := []
+    }
+}
+
+SaveQuickPhraseConfig() {
+    global QuickPhraseItems, QuickPhraseFilePath
+
+    ; 构建 JSON 格式的数据
+    q := Chr(34)
+    json := "{" . q . "items" . q . ":[" . "`n"
+
+    for index, item in QuickPhraseItems {
+        ; 转义特殊字符（顺序很重要！先转义反斜杠）
+        phrase := item["phrase"]
+
+        ; 先处理反斜杠
+        phrase := StrReplace(phrase, "\", "\\")
+        ; 再处理换行等特殊字符
+        phrase := StrReplace(phrase, "`r", "\r")
+        phrase := StrReplace(phrase, "`n", "\n")
+        phrase := StrReplace(phrase, "`t", "\t")
+        ; 最后处理双引号
+        phrase := StrReplace(phrase, q, "\" . q)
+
+        ; 转义热键中的特殊字符
+        hotkey := StrReplace(item["hotkey"], q, "\" . q)
+
+        json .= "  {" . q . "hotkey" . q . ":" . q . hotkey . q . "," . q . "phrase" . q . ":" . q . phrase . q . "}"
+
+        if index < QuickPhraseItems.Length
+            json .= ","
+        json .= "`n"
+    }
+
+    json .= "]}"
+
+    ; 写入文件
+    try {
+        file := FileOpen(QuickPhraseFilePath, "w", "UTF-8")
+        file.Write(json)
+        file.Close()
+    } catch Error as err {
+        MsgBox("快捷短语配置保存失败: " . err.Message)
+    }
+}
+
 ; 切换模块状态
 ToggleModule(moduleName) {
     global ModuleStates
@@ -373,7 +522,7 @@ ToggleModule(moduleName) {
 
 ; 获取所有模块名称列表
 GetAllModules() {
-    return ["vim", "fArea", "emoji", "markdown", "winSwitch", "symbol"]
+    return ["vim", "fArea", "emoji", "markdown", "winSwitch", "symbol", "quickPhrase"]
 }
 
 ; 启用所有模块
